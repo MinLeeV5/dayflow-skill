@@ -1,15 +1,15 @@
 ---
-name: dayflow-work-summary
-description: 读取本机 Dayflow 的本地时间线数据（默认来自 `~/Library/Application Support/Dayflow/chunks.sqlite`），按指定日期、月份或自定义时间范围提取活动，并生成结构化中文工作总结。适用于：用户要求总结某天/某周/某月的 Dayflow 工作内容、基于 Dayflow 生成日报周报月报、回看某一天做了什么、或排查如何读取 Dayflow 本地数据。
+name: dayflow-skill
+description: 读取本机 Dayflow 的本地 timeline 数据（默认来自 `~/Library/Application Support/Dayflow/chunks.sqlite`），按指定日期、月份或自定义时间范围导出标准化 JSON。适用于排查 Dayflow 数据如何读取、为其他 skill 提供可复用的 Dayflow 数据输入、或查看指定时间范围的 Dayflow 时间线明细。
 ---
 
-# Dayflow 工作总结
+# Dayflow 数据采集
 
-读取 Dayflow 本地 SQLite 时间线，归一化输出为 JSON，并按固定模板生成中文工作总结。优先使用内置脚本而不是临时拼接 SQL，这样在 Dayflow 正在运行时也能保持读取链路稳定。
+这个 skill 只负责稳定读取 Dayflow 本地数据并导出 JSON，不负责生成日报、周报或月报总结。
 
 ## 快速开始
 
-1. 选择时间范围：
+1. 先确定时间范围：
    - 单日：`--date YYYY-MM-DD`
    - 整月：`--month YYYY-MM`
    - 自定义范围：`--from YYYY-MM-DD --to YYYY-MM-DD`
@@ -17,60 +17,58 @@ description: 读取本机 Dayflow 的本地时间线数据（默认来自 `~/Lib
    ```bash
    python3 scripts/read_dayflow.py --date 2026-04-01
    ```
-   当高层卡片信息不够时，加上 `--include-details`。
-3. 按 `references/report-format.md` 中的结构输出最终中文总结。
-4. 区分事实与推断；如果某个字段不能被 Dayflow 数据直接支撑，要明确写出这一点。
+3. 如果需要更细的活动描述，追加 `--include-details`；只有在确实需要站点或分心线索时才追加 `--include-metadata`。
+4. 下游 skill 或脚本直接消费输出 JSON，不要在这里混入总结模板。
 
 ## 工作流
 
-### 1. 提取 Dayflow 数据
+### 1. 统一走读取脚本
 
-- 常规场景一律使用 `scripts/read_dayflow.py`，不要每次手写 SQL。
-- 脚本会以只读方式打开活跃数据库，先做 SQLite 快照备份，再查询快照，避免 Dayflow 打开时的 WAL/锁问题。
-- 主数据源表：`timeline_cards`
-- 次数据源表：`journal_entries`
-- 需要更细证据时使用 `--include-details`；只有在需要分心记录、站点线索、上下文切换时才使用 `--include-metadata`
+- 常规场景一律使用 `scripts/read_dayflow.py`，不要每次临时手写 SQL。
+- 脚本会先以只读方式连接活跃数据库，再做 SQLite 快照备份后查询快照，避免 Dayflow 运行时的 WAL 或锁冲突。
+- 默认主库路径是 `~/Library/Application Support/Dayflow/chunks.sqlite`；如果你的安装位置不同，用 `--db-path` 覆盖。
 
-### 2. 解释数据
+### 2. 输出内容说明
 
-- 将每一条 timeline card 视为一个连续工作块，包含 `title`、`summary`、时长、分类，以及可选的详细摘要。
-- 当 `journal_entries` 中存在 `intentions`、`goals`、`reflections`、`summary` 时，优先用它们支撑“目标/反思”。
-- `工时/D` 必须使用脚本统计结果，并始终按 `D = total_hours / 8` 计算。
-- 月报场景要先聚合同类主题，再写总结；不要机械罗列每一张卡片。
-- 如果请求范围内没有卡片，要明确说明 Dayflow 在该时间段没有记录到时间线活动。
+输出 JSON 主要包含这些部分：
+- `source`：数据库路径、存储目录、读取脚本信息
+- `range`：本次查询的起止日期和标签
+- `aggregates`：总卡片数、总时长、按天/分类聚合结果
+- `cards`：归一化后的 Dayflow 时间线卡片
+- `journal_entries`：同时间范围内的 journal 记录
 
-### 3. 撰写总结
+### 3. 读取范围建议
 
-- 严格遵循 `references/report-format.md` 中的章节顺序。
-- 优先使用保守且可追溯的表达：
-  - `根据 Dayflow 记录，...`
-  - `从本月多次出现的工作块推测，...`
-  - `未从 Dayflow 数据中看到明确延期证据。`
-- 不要虚构交付物、指标、延期情况；证据不足时必须标记为推断。
-- 某字段缺少来源数据时，保留该章节并说明限制，不要直接省略。
+- 先用卡片级数据看全局：`timeline_cards`
+- 需要更丰富的叙述时再加 `--include-details`
+- 需要目标、反思、summary 时看 `journal_entries`
+- 只有排查模糊区间或底层采集问题时，再回到 `references/dayflow-data.md` 继续下钻
 
 ## 示例
 
-- 汇总单日：
+- 读取单日：
   ```bash
   python3 scripts/read_dayflow.py --date 2026-04-01
   ```
-- 汇总整月：
+- 读取整月：
   ```bash
   python3 scripts/read_dayflow.py --month 2026-03
   ```
-- 拉取更细粒度区间并附带详情：
+- 读取自定义范围并附带详细摘要：
   ```bash
-  python3 scripts/read_dayflow.py --from 2026-03-29 --to 2026-03-31 --include-details --include-metadata
+  python3 scripts/read_dayflow.py --from 2026-03-29 --to 2026-03-31 --include-details
+  ```
+- 需要 metadata 时：
+  ```bash
+  python3 scripts/read_dayflow.py --month 2026-03 --include-details --include-metadata
   ```
 
-## 何时继续下钻
+## 排障提醒
 
-- 需要精确到某个短时间窗口的屏幕行为：先用 `--include-details` 重跑；如果还不够，再按 `references/dayflow-data.md` 的说明查看 `observations`
-- 需要排查为什么没有数据：先确认数据库路径，再确认目标日期是否存在 `timeline_cards`
-- 需要更正式的月报：使用同一份提取 JSON，按主题、交付物、风险聚合输出，而不是按时间戳流水账
+- 如果没有数据，先确认数据库路径和目标日期是否真的存在 `timeline_cards`
+- 如果 Dayflow 正在运行，不要直接复制数据库文件，优先继续使用当前脚本
+- 如果 `journal_entries` 表不存在，脚本会自动回退为空数组，不影响主流程
 
 ## 参考资料
 
-- 在读取或排障前，先看 `references/dayflow-data.md`
-- 在生成最终总结前，先看 `references/report-format.md`
+- 需要确认库路径、主表结构和读取原则时，阅读 `references/dayflow-data.md`
