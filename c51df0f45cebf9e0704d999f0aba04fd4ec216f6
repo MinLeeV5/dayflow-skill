@@ -1,0 +1,24 @@
+SKILL.md
+  01aa2a525be59583 21,45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.23",
+  "base_commit_sha": "c51df0f45cebf9e0704d999f0aba04fd4ec216f6",
+  "prompts": {
+    "01aa2a525be59583": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019d4877-31cd-7871-8d0c-553da64259db",
+        "model": "gpt-5.4"
+      },
+      "human_author": "李伟民 <liweimin@cvte.com>",
+      "messages": [],
+      "total_additions": 24,
+      "total_deletions": 35,
+      "accepted_lines": 24,
+      "overriden_lines": 0,
+      "messages_url": "https://gitai.gz.cvte.cn/cas/b60364fd650867493e779f83c381fe0bae0be1fb06821c7bf211da041a621839"
+    }
+  }
+}
